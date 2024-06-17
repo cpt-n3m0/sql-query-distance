@@ -104,7 +104,7 @@ function removeKeysByValueRegex<T extends Map<string, any>>(obj: T, filter: stri
     for (const key of obj) {
         if (key[0].includes(filter)) {
             deletables.push(key[0])
-            
+
         }
     }
     deletables.forEach(x => filtered.delete(x));
@@ -116,7 +116,7 @@ function getPartEdits<T extends Map<string, any>>(obj: T, filter: string):  Map<
     for (const key of obj) {
         if (!key[0].includes(filter)) {
             deletables.push(key[0])
-            
+
         }
     }
     deletables.forEach(x => filtered.delete(x));
@@ -190,7 +190,7 @@ export async function calculateDistance(
         if(!maxDistance && maxDistance !== 0) maxDistance = Infinity;
         currentDistance = startNode.distance + firstEditCost;
         queue.set(currentDistance, [startNode]);
-        console.log('Matching ', Object(parts)[currentPart]);
+        //console.log('Matching ', Object(parts)[currentPart]);
 
         queueLoop: while(!canceled) {
             //while(!queue.has(currentDistance)) ++currentDistance;
@@ -208,7 +208,7 @@ export async function calculateDistance(
             const neighbors: Query[] = [];
             edit.perform(query, schema, metaInfo, neighbors);
             //  if (edit.name.includes('Asterisk')){
-                
+
             // console.log(stringifyQuery(query));
             // console.log('Destination: ',stringifyQuery( destinationNode.query));
             // console.log('-------------------------------------');
@@ -238,22 +238,22 @@ export async function calculateDistance(
 
                 if((currentPart == parts.Select) && neighbor.equalSelect(destination)){
                     startNode = neighborNode;
-                    console.log('SELECT match complete', stringifyQuery(query));
+                    //console.log('SELECT match complete', stringifyQuery(query));
                     break queueLoop;
                 }
                 if((currentPart == parts.From) && neighbor.equalFrom(destination)){
                     startNode = neighborNode;
-                    console.log('FROM match complete', stringifyQuery(query));
+                    //console.log('FROM match complete', stringifyQuery(query));
                     break queueLoop;
                 }
                 if((currentPart == parts.Where) && neighbor.equalWhere(destination)){
                     startNode = neighborNode;
-                    console.log('Where match complete', stringifyQuery(query));
+                    //console.log('Where match complete', stringifyQuery(query));
                     break queueLoop;
                 }
                 if((currentPart == parts.Groupby) && neighbor.equalGroupby(destination)){
                     startNode = neighborNode;
-                    console.log('Groupby match complete', stringifyQuery(query));
+                    //console.log('Groupby match complete', stringifyQuery(query));
                     break queueLoop;
                 }
                 if(logging) console.log(neighborNode);
