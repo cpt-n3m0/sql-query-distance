@@ -122,6 +122,42 @@ function getPartEdits<T extends Map<string, any>>(obj: T, filter: string):  Map<
     deletables.forEach(x => filtered.delete(x));
     return filtered;
 }
+enum parts {
+    From,
+    Select,
+    Where,
+    Orderby,
+    Groupby
+};
+function partEquals(q1: Query, q2: Query, part: parts): boolean {
+
+    let match = false;
+    switch(part){
+        case parts.Select: {
+            match = q1.equalSelect(q2);
+            break;
+        }
+        case parts.From: {
+            match = q1.equalFrom(q2);
+            break;
+        }
+        case parts.Where: {
+            match = q1.equalWhere(q2);
+            break;
+        }
+        case parts.Groupby: {
+            match = q1.equalGroupby(q2);
+            break;
+        }
+        case parts.Orderby: {
+            match = q1.equalOrderby(q2);
+            break;
+        }
+    }
+
+    return match
+
+}
 export async function calculateDistance(
         destination: Query,
         start: Query = null,
@@ -140,13 +176,6 @@ export async function calculateDistance(
     const metaInfo = new MetaInfo(destination, schema);
 
     if(!config) config = createDefaultConfig();
-    enum parts {
-        From,
-        Select,
-        Where,
-        Orderby,
-        Groupby
-    };
     let num_parts = Object.keys(parts).length/2;
     let part_states = new Array(num_parts).fill(false);
     canceled = false;
@@ -190,7 +219,8 @@ export async function calculateDistance(
         if(!maxDistance && maxDistance !== 0) maxDistance = Infinity;
         currentDistance = startNode.distance + firstEditCost;
         queue.set(currentDistance, [startNode]);
-        //console.log('Matching ', Object(parts)[currentPart]);
+        if (partEquals(startNode.query, destination, currentPart))
+            continue;
 
         queueLoop: while(!canceled) {
             //while(!queue.has(currentDistance)) ++currentDistance;
@@ -236,24 +266,11 @@ export async function calculateDistance(
                 ++queryCount;
                 const neighborNode = new Node(neighbor, currentDistance, node, edit);
 
-                if((currentPart == parts.Select) && neighbor.equalSelect(destination)){
+                if (partEquals(neighbor, destination, currentPart))
+                {
+
                     startNode = neighborNode;
-                    //console.log('SELECT match complete', stringifyQuery(query));
-                    break queueLoop;
-                }
-                if((currentPart == parts.From) && neighbor.equalFrom(destination)){
-                    startNode = neighborNode;
-                    //console.log('FROM match complete', stringifyQuery(query));
-                    break queueLoop;
-                }
-                if((currentPart == parts.Where) && neighbor.equalWhere(destination)){
-                    startNode = neighborNode;
-                    //console.log('Where match complete', stringifyQuery(query));
-                    break queueLoop;
-                }
-                if((currentPart == parts.Groupby) && neighbor.equalGroupby(destination)){
-                    startNode = neighborNode;
-                    //console.log('Groupby match complete', stringifyQuery(query));
+                    //console.log(Object(parts)[currentPart], ' match complete: ', stringifyQuery(query));
                     break queueLoop;
                 }
                 if(logging) console.log(neighborNode);
