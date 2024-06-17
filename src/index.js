@@ -11,15 +11,16 @@ export * from "./sqlQueryDistance";
 // Input & Output utilities
 export * from "./parser";
 
-/* Example Usage:
-const SQLQueryDistance = require('./dist/index');
+// Example Usage:
+//const SQLQueryDistance = require('./dist/index');
 
-SQLQueryDistance.parseAndCalculateDistance(
-    "SELECT * FROM students"
-).then((res) => {
-    console.log(SQLQueryDistance.stringifyDistance(...res));
-});
-*/
+//SQLQueryDistance.parseAndCalculateDistance(
+   //process.argv[1],
+   //process.argv[2]
+//).then((res) => {
+    //console.log(SQLQueryDistance.stringifyDistance(...res));
+//});
+
 
 
 
@@ -41,10 +42,13 @@ if (global && global.window) {
         Object.assign({}, SQL, Config, Distance, Parser);
 }
 
-/* Example Usage:
-SQLQueryDistance.parseAndCalculateDistance(
-    "SELECT * FROM students"
+//  Example Usage:
+/* SQLQueryDistance.parseAndCalculateDistance(
+   process.argv[1],
+   process.argv[2]
+    
 ).then((res) => {
     console.log(SQLQueryDistance.stringifyDistance(...res));
 });
-*/
+
+ */

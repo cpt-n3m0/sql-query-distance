@@ -89,7 +89,45 @@ export class Query extends Hashable {
     public getOrderby(i: number): OrderBy { return this.orderby[i]; }
     public copyOrderby(): OrderBy[] { return this.orderby.slice(); }
 
+    public equalFrom(other: Query): boolean {
+        if(this.fromLength !== other.fromLength) return false;
+        for(let i=0, l=this.fromLength; i<l; ++i) {
+            if(!this.from[i].equals(other.from[i], this, other)) return false;
+        }
+        return true;
+    }
 
+    public equalSelect(other: Query): boolean {
+        if(this.selectLength !== other.selectLength) return false;
+        for(let i=0, l=this.selectLength; i<l; ++i) {
+            if(!this.select[i].equals(other.select[i], this, other)) return false;
+        }
+        return true;
+    }
+    public equalOrderby(other: Query): boolean {
+        if(this.orderbyLength !== other.orderbyLength) return false;
+        for(let i=0, l=this.orderbyLength; i<l; ++i) {
+            if(!this.orderby[i].equals(other.orderby[i], this, other)) return false;
+        }
+        return true;
+    }
+
+    public equalGroupby(other: Query): boolean {
+        if(this.groupbyLength !== other.groupbyLength) return false;
+        for(let i=0, l=this.groupbyLength; i<l; ++i) {
+            if(!(this.groupby[i] === other.groupby[i] ||
+                (this.groupby[i] && this.groupby[i].equals(other.groupby[i], this, other))))
+                return false;
+        }
+        return true;
+    }
+
+    public equalWhere(other: Query): boolean {
+        if(!((this.where == other.where) ||
+         (this.where !== null && this.where.equals(other.where, this, other))))
+         return false;
+        return true;
+    }
     public equals(other: Query): boolean {
         if((other === null) || (this.hash !== other.hash)) return false;
         if(this.distinct !== other.distinct) return false;
@@ -215,6 +253,7 @@ export class Query extends Hashable {
         recursionDepth: number,
         maxHeight: HeightInfo = null
     ): Expression[] {
+        console.log(multimap)
         if(recursionDepth < 0) return [];
 
         const context = new ExpressionContext([], this, maxHeight);

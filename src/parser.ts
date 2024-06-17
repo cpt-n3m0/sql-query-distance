@@ -311,7 +311,7 @@ function stringifyExpression(e: SQL.Expression, avoidNull: boolean = true): any 
  * @throws an error if the description cannot be parsed into a query
  */
 export function parseQuery(description: string): SQL.Query {
-    let ast = parser.astify(description);
+    let ast = parser.astify(description, {database: 'transactsql'});
 
     if(!ast) return null;
 

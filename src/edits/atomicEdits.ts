@@ -1,7 +1,8 @@
 import { Schema, Query, JoinType, SelectElement, Expression, ColumnReference, AggregationFunction,
     BinaryExpression, FromElement, OrderBy, MetaInfo, Asterisk, Not, HeightInfo, Literal, 
     ExpressionContext, 
-    SelectMetaInfo} from "../sql";
+    SelectMetaInfo,
+    OperatorType} from "../sql";
 import { EditSet, addEdit } from "./edit";
 
 
@@ -71,11 +72,14 @@ function removeLiteral(x: Expression): Expression[] {
 
 
 // === Not ===
-function addNot(x: Expression, context: ExpressionContext) {
-    //context.maxHeight < context.stack.length + x.height + 1 => can't increase tree height by 1
-    if(x!=null && context.maxHeight.minDiff(x.height) < context.stack.length+1) return [];
-    
-    return (x!=null) ? [new Not(x)] : [Not.baseNot];
+function addNot(meta: MetaInfo): (x: Expression, context: ExpressionContext) => Expression[] {
+    return (x: Expression, context: ExpressionContext) => {
+        //context.maxHeight < context.stack.length + x.height + 1 => can't increase tree height by 1
+        if(x!=null && context.maxHeight.minDiff(x.height) < context.stack.length+1) return [];
+        // if (meta.having.notHeight + meta.select.notHeight + meta.where.notHeight + meta.from.notHeight + meta.orderby.notHeight == -5) return [];
+        
+        return (x!=null) ? [new Not(x)] : [Not.baseNot];
+    }
 }
 function removeNot(x: Expression): Expression[] {
     return Not.isNot(x) ? [x.argument] : [];
@@ -116,20 +120,22 @@ function unsetAggregationFunctionDistinct(x: Expression) {
 
 
 // === BinaryExpression ===
-function addBaseBinaryExpression(x: Expression, context: ExpressionContext) {
+function addBaseBinaryExpression(targetOperatorTypes: OperatorType[]){
+    return (x: Expression, context: ExpressionContext) => {
     //context.maxHeight < context.stack.length + x.height + 1 => can't increase tree height by 1
-    if(x!=null && context.maxHeight.minDiff(x.height) < context.stack.length+1) return [];
-
-    const res = new Array<BinaryExpression>(BinaryExpression.baseBinaryExpressions.length);
-    for(let b=0, n=BinaryExpression.baseBinaryExpressions.length; b<n; ++b) {
-        if(x==null) {
-            res[b] = BinaryExpression.baseBinaryExpressions[b];
-        } else {
-            res[b] = BinaryExpression.baseBinaryExpressions[b].setLeft(x);
-            res.push(BinaryExpression.baseBinaryExpressions[b].setRight(x));
+        if(x!=null && context.maxHeight.minDiff(x.height) < context.stack.length+1) return [];
+        const res = new Array<BinaryExpression>(targetOperatorTypes.length);
+        
+        for(let b=0, n=targetOperatorTypes.length; b<n; ++b) {
+            if(x==null) {
+            } else {
+                res[b] = BinaryExpression.baseBinaryExpressions[targetOperatorTypes[b]].setLeft(x);
+                res.push(BinaryExpression.baseBinaryExpressions[targetOperatorTypes[b]].setRight(x));
+            }
+            res[b] = BinaryExpression.baseBinaryExpressions[targetOperatorTypes[b]];
         }
-    }
-    return res;
+        return res;
+}
 }
 function removeBinaryExpression(x: Expression) {
     return (BinaryExpression.isBinaryExpression(x) && (x.left==null || x.right==null)) 
@@ -350,7 +356,7 @@ addEdit(atomicEdits, {
     cost: 1,
     perform: (query: Query, _schema: Schema, meta: MetaInfo, result: Query[]) => {
         replaceSelectExpression(query, result, 
-            addNot, 
+            addNot(meta), 
             meta.select.length, 
             meta.select.notHeight, 
             meta.select);
@@ -425,8 +431,10 @@ addEdit(atomicEdits, {
     description: "Add (missing) binary-expression to a select-element expression",
     cost: 1,
     perform: (query: Query, _schema: Schema, meta: MetaInfo, result: Query[]) => {
-        replaceSelectExpression(query, result, 
-            addBaseBinaryExpression, 
+
+    const targetOperatorTypes: OperatorType[] = Array.from(new Set(meta.select.binaryExpressions.map((x: BinaryExpression) => x.operator)))
+       replaceSelectExpression(query, result, 
+            addBaseBinaryExpression(targetOperatorTypes), 
             meta.select.length, 
             meta.select.binaryExpressionHeight, 
             meta.select);
@@ -531,7 +539,7 @@ addEdit(atomicEdits, {
 });
 
 addEdit(atomicEdits, {
-    name: "setTableJoinType",
+    name: "setFromTableJoinType",
     description: "Set complex join-type on a from-element (change cross join to a complex join)",
     cost: 1,
     perform: (query: Query, _schema: Schema, meta: MetaInfo, result: Query[]) => {
@@ -541,18 +549,16 @@ addEdit(atomicEdits, {
         for(let f=1; f<query.fromLength; ++f) {
             const from = query.getFrom(f);
             if(from.join != null) continue;
-            for(let item in JoinType) {
-                if (isNaN(Number(item))) {
+            for(let item of meta.from.joins) {
                     result.push(query.setFromElement(f,
-                        from.setJoin(JoinType[item] as any as JoinType)));
-                }
+                        from.setJoin(item as any as JoinType)));
             }
         }
     }
 });
 
 addEdit(atomicEdits, {
-    name: "unsetTableJoinType",
+    name: "unsetFromTableJoinType",
     description: "Unset complex join-type on a from-element (change complex join to cross join)",
     cost: 1,
     perform: (query: Query, _schema: Schema, _meta: MetaInfo, result: Query[]) => {
@@ -633,7 +639,7 @@ addEdit(atomicEdits, {
     description: "Add (missing) NOT to a from-element join-condition",
     cost: 1,
     perform: (query: Query, _schema: Schema, meta: MetaInfo, result: Query[]) => {
-        replaceFromExpression(query, result, addNot, meta.from.notHeight, false, false, meta.from);
+        replaceFromExpression(query, result, addNot(meta), meta.from.notHeight, false, false, meta.from);
     }
 });
 
@@ -646,28 +652,29 @@ addEdit(atomicEdits, {
     }
 });
 
-addEdit(atomicEdits, {
-    name: "addFromBinaryExpression",
-    description: "Add (missing) binary-expression to a from-element join-condition",
-    cost: 1,
-    perform: (query: Query, _schema: Schema, meta: MetaInfo, result: Query[]) => {
-        replaceFromExpression(query, result,
-            addBaseBinaryExpression,
-            meta.from.binaryExpressionHeight, 
-            false, 
-            false, 
-            meta.from);
-    }
-});
+ addEdit(atomicEdits, {
+     name: "addFromBinaryExpression",
+     description: "Add (missing) binary-expression to a from-element join-condition",
+     cost: 1,
+     perform: (query: Query, _schema: Schema, meta: MetaInfo, result: Query[]) => {
+        const targetOperatorTypes: OperatorType[] = Array.from(new Set(meta.from.binaryExpressions.map((x: BinaryExpression) => x.operator)))
+         replaceFromExpression(query, result,
+          addBaseBinaryExpression(targetOperatorTypes),
+             meta.from.binaryExpressionHeight, 
+             false, 
+             false, 
+             meta.from);
+     }
+ });
 
-addEdit(atomicEdits, {
-    name: "removeFromBinaryExpression",
-    description: "Remove (excess) binary-expression from a from-element join-condition",
-    cost: 1,
-    perform: (query: Query, _schema: Schema, _meta: MetaInfo, result: Query[]) => {
-        replaceFromExpression(query, result, removeBinaryExpression, Infinity, true, true);
-    }
-});
+ addEdit(atomicEdits, {
+     name: "removeFromBinaryExpression",
+     description: "Remove (excess) binary-expression from a from-element join-condition",
+     cost: 1,
+     perform: (query: Query, _schema: Schema, _meta: MetaInfo, result: Query[]) => {
+         replaceFromExpression(query, result, removeBinaryExpression, Infinity, true, true);
+     }
+ });
 
 addEdit(atomicEdits, {
     name: "setFromAlias",
@@ -676,20 +683,23 @@ addEdit(atomicEdits, {
     perform: (query: Query, schema: Schema, _meta: MetaInfo, result: Query[]) => {
         for(let f=0; f<query.fromLength; ++f) {
             const from = query.getFrom(f);
-            if(from.as !== null || !schema.has(from.table)) continue;
+            if(from.as !== null || !schema.has(from.table) || !_meta.from.as.has(from.table)) continue;
 
-            let as = schema.get(from.table).name.charAt(0);
+            let table_aliases = _meta.from.as.get(from.table);
+            //     //let as = schema.get(fe.table).name.charAt(0);
             let asNr = 0;
-            for(let exists = true; exists; asNr++) {
+            let exists = true
+            for(;exists && asNr < table_aliases.length; asNr++) {
                 exists = false;
                 for(let f2=0; f2<query.fromLength; ++f2) {
-                    if(query.getFrom(f2).as == (as + asNr)) {
+                    if(query.getFrom(f2).as == table_aliases[asNr]) {
                         exists = true;
                         break;
                     }
-                }
+                } 
             }
-            result.push(query.setFromElement(f, from.setAs(as+asNr)));
+            if (exists) continue;
+            result.push(query.setFromElement(f, from.setAs(table_aliases[asNr - 1])));
         }
     }
 });
@@ -799,7 +809,7 @@ addEdit(atomicEdits, {
     description: "Add (missing) NOT to the where-clause",
     cost: 1,
     perform: (query: Query, _schema: Schema, meta: MetaInfo, result: Query[]) => {
-        replaceWhereExpression(query, result, addNot, meta.where.notHeight, meta.where);
+        replaceWhereExpression(query, result, addNot(meta), meta.where.notHeight, meta.where);
     }
 });
 
@@ -817,8 +827,9 @@ addEdit(atomicEdits, {
     description: "Add (missing) binary-expression to the where-clause",
     cost: 1,
     perform: (query: Query, _schema: Schema, meta: MetaInfo, result: Query[]) => {
+        const targetOperatorTypes: OperatorType[] = Array.from(new Set(meta.where.binaryExpressions.map((x: BinaryExpression) => x.operator)))
         replaceWhereExpression(query, result,
-            addBaseBinaryExpression,
+            addBaseBinaryExpression(targetOperatorTypes),
             meta.where.binaryExpressionHeight, 
             meta.where);
     }
@@ -951,7 +962,7 @@ addEdit(atomicEdits, {
     description: "Add (missing) NOT to a group-by expression",
     cost: 1,
     perform: (query: Query, _schema: Schema, meta: MetaInfo, result: Query[]) => {
-        replaceGroupbyExpression(query, result, addNot, meta.groupby.notHeight, meta.groupby);
+        replaceGroupbyExpression(query, result, addNot(meta), meta.groupby.notHeight, meta.groupby);
     }
 });
 
@@ -964,19 +975,20 @@ addEdit(atomicEdits, {
     }
 });
 
-addEdit(atomicEdits, {
+/* addEdit(atomicEdits, {
     name: "addGroupbyBinaryExpression",
     description: "Add (missing) binary expression to a group-by expression",
     cost: 1,
     perform: (query: Query, _schema: Schema, meta: MetaInfo, result: Query[]) => {
+        const targetOperatorTypes: OperatorType[] = Array.from(new Set(meta.where.binaryExpressions.map((x: BinaryExpression) => x.operator)))
         replaceGroupbyExpression(query, result,
-            addBaseBinaryExpression,
+            addBaseBinaryExpression(meta),
             meta.groupby.columnReferenceHeight, 
             meta.groupby);
     }
-});
+}) */;
 
-addEdit(atomicEdits, {
+/* addEdit(atomicEdits, {
     name: "removeGroupbyBinaryExpression",
     description: "Remove (excess) binary-expression from a group-by expression",
     cost: 1,
@@ -984,7 +996,7 @@ addEdit(atomicEdits, {
         replaceGroupbyExpression(query, result, removeBinaryExpression, Infinity);
     }
 });
-
+ */
 
 
 
@@ -1076,7 +1088,7 @@ addEdit(atomicEdits, {
     description: "Add (missing) NOT to the having-clause",
     cost: 1,
     perform: (query: Query, _schema: Schema, meta: MetaInfo, result: Query[]) => {
-        replaceHavingExpression(query, result, addNot, meta.having.notHeight, meta.having);
+        replaceHavingExpression(query, result, addNot(meta), meta.having.notHeight, meta.having);
     }
 });
 
@@ -1139,8 +1151,9 @@ addEdit(atomicEdits, {
     description: "Add (missing) binary expression to the having-clause",
     cost: 1,
     perform: (query: Query, _schema: Schema, meta: MetaInfo, result: Query[]) => {
+        const targetOperatorTypes: OperatorType[] = Array.from(new Set(meta.having.binaryExpressions.map((x: BinaryExpression) => x.operator)))
         replaceHavingExpression(query, result,
-            addBaseBinaryExpression,
+            addBaseBinaryExpression(targetOperatorTypes),
             meta.having.binaryExpressionHeight, 
             meta.having);
     }
@@ -1303,7 +1316,7 @@ addEdit(atomicEdits, {
     description: "Add (missing) NOT to a order-by-element expression",
     cost: 1,
     perform: (query: Query, _schema: Schema, meta: MetaInfo, result: Query[]) => {
-        replaceOrderbyExpression(query, result, addNot, meta.orderby.notHeight, meta.orderby);
+        replaceOrderbyExpression(query, result, addNot(meta), meta.orderby.notHeight, meta.orderby);
     }
 });
 
@@ -1366,8 +1379,9 @@ addEdit(atomicEdits, {
     description: "Add (missing) binary expression to a order-by-element expression",
     cost: 1,
     perform: (query: Query, _schema: Schema, meta: MetaInfo, result: Query[]) => {
+        const targetOperatorTypes: OperatorType[] = Array.from(new Set(meta.having.binaryExpressions.map((x: BinaryExpression) => x.operator)))
         replaceOrderbyExpression(query, result,
-            addBaseBinaryExpression,
+            addBaseBinaryExpression(targetOperatorTypes),
             meta.orderby.binaryExpressionHeight, 
             meta.orderby);
     }

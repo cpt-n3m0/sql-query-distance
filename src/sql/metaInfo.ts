@@ -1,6 +1,6 @@
 import { HeightInfo } from "./heightInfo";
 import { Query, ColumnReference, AggregationFunction, Asterisk, Literal, 
-    Expression, ExpressionContext } from "./query";
+    Expression, ExpressionContext, BinaryExpression, JoinType } from "./query";
 import { Schema } from "./schema";
 
 // ===========
@@ -38,6 +38,7 @@ export class SelectMetaInfo extends HeightInfo {
     readonly columns: ColumnReference[];
     readonly literals: Literal[];
     readonly aggregations: AggregationFunction[];
+    readonly binaryExpressions: BinaryExpression[];
     readonly as: string[];
 
     constructor(query: Query, schema: Schema) {
@@ -47,13 +48,14 @@ export class SelectMetaInfo extends HeightInfo {
         let literals = new Array<Literal>();
         let aggregations = new Array<AggregationFunction>();
         let asterisks = new Array<Asterisk>();
+        let binaryExpressions = new Array<BinaryExpression>();
         let as = new Array<string>();
 
         for (let s = 0; s < query.selectLength; ++s) {
             const se = query.getSelect(s);
             if(se.expression) maxHeights = HeightInfo.max(maxHeights, se.expression.height);
             se.recursivelyReplaceExpression(
-                collect(query, columns, literals, aggregations, asterisks), Infinity, query);
+                collect(query, columns, literals, aggregations, asterisks, binaryExpressions), Infinity, query);
             if (se.as != null && !containsPrimitive(as, se.as)) as.push(se.as);
         }
 
@@ -66,7 +68,7 @@ export class SelectMetaInfo extends HeightInfo {
                         // const gb = query.getGroupby(g);
                         // if(!containsExpression(columns, gb, query)) columns.push(gb);
                         query.recursivelyReplaceGroupby(g, 
-                            collect(query, columns, literals, aggregations, null), Infinity);
+                            collect(query, columns, literals, aggregations, null, []), Infinity);
                     }
                 } else {
                     for (let f = 0; f < query.fromLength; ++f) {
@@ -111,6 +113,7 @@ export class SelectMetaInfo extends HeightInfo {
         this.columns = columns;
         this.literals = literals;
         this.aggregations = aggregations;
+        this.binaryExpressions = binaryExpressions
         this.as = as;
     }
 }
@@ -119,9 +122,13 @@ export class SelectMetaInfo extends HeightInfo {
 class FromMetaInfo extends HeightInfo {
     readonly length: number;
     readonly join: boolean;
+    readonly joins: Array<JoinType>;
     readonly columns: ColumnReference[];
     readonly literals: Literal[];
     readonly tables: string[];
+    readonly as: Map<string, Array<string>>;
+    readonly binaryExpressions: BinaryExpression[];
+ 
 
     constructor(query: Query) {
         let maxHeights = HeightInfo.EMPTY;
@@ -129,14 +136,22 @@ class FromMetaInfo extends HeightInfo {
         let columns = new Array<ColumnReference>();
         let literals = new Array<Literal>();
         let tables = new Array<string>();
+        let joins = new Array<JoinType>();
+        let binaryExpressions = new Array<BinaryExpression>();
+        let as = new Map<string, Array<string>>();
 
         for (let f = 0; f < query.fromLength; ++f) {
             const fe = query.getFrom(f);
-            if (fe.join != null) join = true;
+            if (fe.join != null){
+                join = true;
+                if(!containsPrimitive(joins, fe.join)) joins.push(fe.join);
+            }
             if(fe.on) maxHeights = HeightInfo.max(maxHeights, fe.on.height);
             fe.recursivelyReplaceOn(
-                collect(query, columns, literals, [], []), Infinity, query);
+                collect(query, columns, literals, [], [], binaryExpressions), Infinity, query);
             if(fe.table && !containsPrimitive(tables, fe.table)) tables.push(fe.table);
+            if (fe.as != null && !as.has(fe.table)) as.set(fe.table, []);
+            if (fe.as != null && !containsPrimitive(as.get(fe.table), fe.as)) as.get(fe.table).push(fe.as);
         }
         
         super(
@@ -148,9 +163,12 @@ class FromMetaInfo extends HeightInfo {
         );
         this.length = query.fromLength;
         this.join = join;
+        this.joins = joins;
         this.columns = columns;
         this.literals = literals;
         this.tables = tables;
+        this.as = as;
+        this.binaryExpressions = binaryExpressions;
     }
 }
 
@@ -158,15 +176,18 @@ class FromMetaInfo extends HeightInfo {
 class WhereMetaInfo extends HeightInfo {
     readonly columns: ColumnReference[];
     readonly literals: Literal[];
+    readonly binaryExpressions: BinaryExpression[];
+         
 
     constructor(query: Query) {
         let maxHeights = HeightInfo.EMPTY;
         let columns = new Array<ColumnReference>();
         let literals = new Array<Literal>();
+        let binaryExpressions = new Array<BinaryExpression>();
 
         if(query.where) maxHeights = query.where.height;
         query.recursivelyReplaceWhere(
-            collect(query, columns, literals, [], []), Infinity);
+            collect(query, columns, literals, [], [], binaryExpressions), Infinity);
 
         super(
             maxHeights.columnReferenceHeight,
@@ -177,6 +198,7 @@ class WhereMetaInfo extends HeightInfo {
         );
         this.columns = columns;
         this.literals = literals;
+        this.binaryExpressions = binaryExpressions;
     }
 }
 
@@ -195,7 +217,7 @@ class GroupByMetaInfo extends HeightInfo {
             const x = query.getGroupby(g);
             if(x) maxHeights = HeightInfo.max(maxHeights, x.height);
             query.recursivelyReplaceGroupby(g, 
-                collect(query, columns, literals, [], []), Infinity);
+                collect(query, columns, literals, [], [], []), Infinity);
         }
         
         super(
@@ -216,16 +238,18 @@ class HavingMetaInfo extends HeightInfo {
     readonly columns: ColumnReference[];
     readonly literals: Literal[];
     readonly aggregations: AggregationFunction[];
+    readonly binaryExpressions: BinaryExpression[];
 
     constructor(query: Query) {
         let maxHeights = HeightInfo.EMPTY;
         let columns = new Array<ColumnReference>();
         let literals = new Array<Literal>();
         let aggregations = new Array<AggregationFunction>();
+        let binaryExpressions = new Array<BinaryExpression>();
 
         if(query.having) maxHeights = query.having.height;
         query.recursivelyReplaceHaving(
-            collect(query, columns, literals, aggregations, []), Infinity);
+            collect(query, columns, literals, aggregations, [], binaryExpressions), Infinity);
 
         super(
             maxHeights.columnReferenceHeight, 
@@ -237,6 +261,7 @@ class HavingMetaInfo extends HeightInfo {
         this.columns = columns;
         this.literals = literals;
         this.aggregations = aggregations;
+        this.binaryExpressions = binaryExpressions;
     }
 }
 
@@ -246,18 +271,21 @@ class OrderByMetaInfo extends HeightInfo {
     readonly columns: ColumnReference[];
     readonly literals: Literal[];
     readonly aggregations: AggregationFunction[];
+    readonly binaryExpressions: BinaryExpression[];
 
     constructor(query: Query) {
         let maxHeights = HeightInfo.EMPTY;
         let columns = new Array<ColumnReference>();
         let literals = new Array<Literal>();
         let aggregations = new Array<AggregationFunction>();
+        let binaryExpressions = new Array<BinaryExpression>();
+
 
         for (let o = 0; o < query.orderbyLength; ++o) {
             const oe = query.getOrderby(o);
             if(oe.expression) maxHeights = HeightInfo.max(maxHeights, oe.expression.height);
             oe.recursivelyReplaceExpression(
-                collect(query, columns, literals, aggregations, []), Infinity, query);
+                collect(query, columns, literals, aggregations, [], binaryExpressions), Infinity, query);
         }
         
         super(
@@ -271,6 +299,7 @@ class OrderByMetaInfo extends HeightInfo {
         this.columns = columns;
         this.literals = literals;
         this.aggregations = aggregations;
+        this.binaryExpressions = binaryExpressions;
     }
 }
 
@@ -282,7 +311,8 @@ function collect(
     columns: ColumnReference[], 
     literals: Literal[], 
     aggregations: AggregationFunction[],
-    asterisks: Asterisk[]
+    asterisks: Asterisk[],
+    binaryExpressions: BinaryExpression[]
 ) {
     return (x: Expression): Expression[] => {
         if (Asterisk.isAsterisk(x)) {
@@ -296,6 +326,9 @@ function collect(
         } else if (AggregationFunction.isAggregationFunction(x)) {
             const cleanX = new AggregationFunction(x.aggregation);
             if(!containsExpression(aggregations, cleanX, query)) aggregations.push(cleanX);
+        } else if (BinaryExpression.isBinaryExpression(x)) {
+            const cleanX = new BinaryExpression(x.operator, x.left, x.right);
+            if(!containsExpression(binaryExpressions, cleanX, query)) binaryExpressions.push(cleanX);
         }
         return [];
     };

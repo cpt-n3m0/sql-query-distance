@@ -54,7 +54,7 @@ function changeColumnReferenceColumn(columnReferences: ColumnReference[], schema
 
         const res: Expression[] = [];
         for(let c of columnReferences) {
-            if(schema.get(from.table).has(c.column)) {
+            if(schema.get(from.table)?.has(c.column)) {
                 res.push(x.setColumn(c.column));
             }
         }
@@ -99,17 +99,24 @@ function changeAggregationFunctionAggregation(aggregations: AggregationFunction[
 
 
 // === BinaryExpression ===
-function changeBaseBinaryExpressionOperator(x: Expression) {
-    if(!BinaryExpression.isBinaryExpression(x)) return [];
+function changeBaseBinaryExpressionOperator(meta: MetaInfo): (x: Expression) => Expression[]{
+    return (x: Expression) => {
+        if(!BinaryExpression.isBinaryExpression(x)) return [];
+        const targetOperatorTypes: OperatorType[] = Array.from(new Set(meta.select.binaryExpressions.map((x: BinaryExpression) => x.operator)))
 
-    const res: Expression[] = [];
-    for(let b=0, n=BinaryExpression.baseBinaryExpressions.length; b<n; ++b) {
-        const operator = BinaryExpression.baseBinaryExpressions[b].operator;
-        if(operator!=x.operator) {
-            res.push(x.setOperator(operator));
+        const res: Expression[] = [];
+        for(let b=0, n=targetOperatorTypes.length; b<n; ++b) {
+            const operator = BinaryExpression.baseBinaryExpressions[targetOperatorTypes[b]].operator;
+            if(operator!=x.operator) {
+                res.push(x.setOperator(operator));
+            }
+            else{
+                
+                console.log('same operator.skipping')
+            }
         }
+        return res;
     }
-    return res;
 }
 function swapCommutativeArguments(x: Expression, context: ExpressionContext) {
     if(!BinaryExpression.isBinaryExpression(x) 
@@ -263,7 +270,7 @@ addEdit(horizontalEdits, {
     cost: atomicEdits.get("addSelectBinaryExpression").cost,
     perform: (query: Query, _schema: Schema, meta: MetaInfo, result: Query[]) => {
         replaceSelectExpression(query, result,
-            changeBaseBinaryExpressionOperator, 
+            changeBaseBinaryExpressionOperator(meta), 
             meta.select.length, 
             meta.select.binaryExpressionHeight);
     }
@@ -364,7 +371,7 @@ addEdit(horizontalEdits, {
 addEdit(horizontalEdits, {
     name: "changeFromJoinType",
     description: "Change (incorrect) from-element join-type",
-    cost: atomicEdits.get("setTableJoinType").cost,
+    cost: atomicEdits.get("setFromTableJoinType").cost,
     perform: (query: Query, _schema: Schema, meta: MetaInfo, result: Query[]) => {
         if(!meta.from.join) return;
 
@@ -372,11 +379,12 @@ addEdit(horizontalEdits, {
         for(let f=1; f<query.fromLength; ++f) {
             const from = query.getFrom(f);
             if(from.join==null) continue;
-            for(let item in JoinType) {
-                if (isNaN(Number(item))) {
+            for(let item of meta.from.joins) {
+                if (from.join == item) continue;
+                // if (isNaN(Number(item))) {
                     result.push(query.setFromElement(f,
-                        from.setJoin(JoinType[item] as any as JoinType)));
-                }
+                        from.setJoin(item as any as JoinType)));
+                // }
             }
         }
     }
@@ -415,52 +423,52 @@ addEdit(horizontalEdits, {
     }
 });
 
-addEdit(horizontalEdits, {
-    name: "changeFromBinaryExpressionOperator",
-    description: "Change (incorrect) binary-expression operator in a from-element join-condition",
-    cost: atomicEdits.get("addFromBinaryExpression").cost,
-    perform: (query: Query, _schema: Schema, meta: MetaInfo, result: Query[]) => {
-        replaceFromExpression(query, result,
-            changeBaseBinaryExpressionOperator,
-            meta.from.binaryExpressionHeight);
-    }
-});
+// addEdit(horizontalEdits, {
+//     name: "changeFromBinaryExpressionOperator",
+//     description: "Change (incorrect) binary-expression operator in a from-element join-condition",
+//     cost: atomicEdits.get("addFromBinaryExpression").cost,
+//     perform: (query: Query, _schema: Schema, meta: MetaInfo, result: Query[]) => {
+//         replaceFromExpression(query, result,
+//             changeBaseBinaryExpressionOperator(meta),
+//             meta.from.binaryExpressionHeight);
+//     }
+// });
 
-addEdit(horizontalEdits, {
-    name: "swapFromBinaryExpressionArguments",
-    description: "Swap arguments of commutative binary-expression in a from-element join-condition",
-    cost: 0,
-    perform: (query: Query, _schema: Schema, meta: MetaInfo, result: Query[]) => {
-        replaceFromExpression(query, result, 
-            swapCommutativeArguments,
-            meta.from.binaryExpressionHeight);
-    }
-});
+// addEdit(horizontalEdits, {
+//     name: "swapFromBinaryExpressionArguments",
+//     description: "Swap arguments of commutative binary-expression in a from-element join-condition",
+//     cost: 0,
+//     perform: (query: Query, _schema: Schema, meta: MetaInfo, result: Query[]) => {
+//         replaceFromExpression(query, result, 
+//             swapCommutativeArguments,
+//             meta.from.binaryExpressionHeight);
+//     }
+// });
 
-addEdit(horizontalEdits, {
-    name: "swapFromBinaryExpressionNesting",
-    description: "Swap nesting of associative binary-expression in a from-element join-condition",
-    cost: 0,
-    perform: (query: Query, _schema: Schema, meta: MetaInfo, result: Query[]) => {
-        replaceFromExpression(query, result, 
-            swapAssociativeNesting,
-            meta.from.binaryExpressionHeight, 
-            false, 
-            false, 
-            meta.from);
-    }
-});
+// addEdit(horizontalEdits, {
+//     name: "swapFromBinaryExpressionNesting",
+//     description: "Swap nesting of associative binary-expression in a from-element join-condition",
+//     cost: 0,
+//     perform: (query: Query, _schema: Schema, meta: MetaInfo, result: Query[]) => {
+//         replaceFromExpression(query, result, 
+//             swapAssociativeNesting,
+//             meta.from.binaryExpressionHeight, 
+//             false, 
+//             false, 
+//             meta.from);
+//     }
+// });
 
-addEdit(horizontalEdits, {
-    name: "mirrorFromBinaryExpressionInequation",
-    description: "Mirror an inequation in a from-element join-condition",
-    cost: 0,
-    perform: (query: Query, _schema: Schema, meta: MetaInfo, result: Query[]) => {
-        replaceFromExpression(query, result, 
-            mirrorInequation,
-            meta.from.binaryExpressionHeight);
-    }
-});
+// addEdit(horizontalEdits, {
+//     name: "mirrorFromBinaryExpressionInequation",
+//     description: "Mirror an inequation in a from-element join-condition",
+//     cost: 0,
+//     perform: (query: Query, _schema: Schema, meta: MetaInfo, result: Query[]) => {
+//         replaceFromExpression(query, result, 
+//             mirrorInequation,
+//             meta.from.binaryExpressionHeight);
+//     }
+// });
 
 addEdit(horizontalEdits, {
     name: "changeFromAlias",
@@ -469,20 +477,25 @@ addEdit(horizontalEdits, {
     perform: (query: Query, schema: Schema, _meta: MetaInfo, result: Query[]) => {
         for(let f=0; f<query.fromLength; ++f) {
             const fe = query.getFrom(f);
-            if(fe.as==null || !schema.has(fe.table)) continue;
+            if(fe.as==null || !schema.has(fe.table) || !_meta.from.as.has(fe.table)) continue;
 
-            let as = schema.get(fe.table).name.charAt(0);
+            let table_aliases = _meta.from.as.get(fe.table);
+        //     //let as = schema.get(fe.table).name.charAt(0);
             let asNr = 0;
-            for(let exists = true; exists; asNr++) {
+            let exists = true;
+            for(;exists && asNr < table_aliases.length; asNr++) {
                 exists = false;
                 for(let f2=0; f2<query.fromLength; ++f2) {
-                    if(query.getFrom(f2).as == (as+asNr)) {
+                    if(query.getFrom(f2).as == table_aliases[asNr]) {
                         exists = true;
                         break;
                     }
-                }
+                } 
             }
-            result.push(query.setFromElement(f, fe.setAs(as+asNr)));
+            if (exists == true) {
+                continue;
+            }
+            result.push(query.setFromElement(f, fe.setAs(table_aliases[asNr - 1])));
         }
     }
 });
@@ -535,12 +548,12 @@ addEdit(horizontalEdits, {
     cost: atomicEdits.get("addWhereBinaryExpression").cost,
     perform: (query: Query, _schema: Schema, meta: MetaInfo, result: Query[]) => {
         replaceWhereExpression(query, result,
-            changeBaseBinaryExpressionOperator,
+            changeBaseBinaryExpressionOperator(meta),
             meta.where.binaryExpressionHeight);
     }
 });
 
-addEdit(horizontalEdits, {
+/* addEdit(horizontalEdits, {
     name: "swapWhereBinaryExpressionArguments",
     description: "Swap arguments of commutative binary-expression in the where-clause",
     cost: 0,
@@ -549,7 +562,7 @@ addEdit(horizontalEdits, {
             swapCommutativeArguments,
             meta.where.binaryExpressionHeight);
     }
-});
+}); */
 
 addEdit(horizontalEdits, {
     name: "swapWhereBinaryExpressionNesting",
@@ -637,50 +650,50 @@ addEdit(horizontalEdits, {
     }
 });
 
-addEdit(horizontalEdits, {
-    name: "changeGroupbyBinaryExpressionOperator",
-    description: "Change (incorrect) binary-expression operator in a group-by expression",
-    cost: atomicEdits.get("addGroupbyBinaryExpression").cost,
-    perform: (query: Query, _schema: Schema, meta: MetaInfo, result: Query[]) => {
-        replaceGroupbyExpression(query, result,
-            changeBaseBinaryExpressionOperator,
-            meta.groupby.binaryExpressionHeight);
-    }
-});
+// addEdit(horizontalEdits, {
+//     name: "changeGroupbyBinaryExpressionOperator",
+//     description: "Change (incorrect) binary-expression operator in a group-by expression",
+//     cost: atomicEdits.get("addGroupbyBinaryExpression").cost,
+//     perform: (query: Query, _schema: Schema, meta: MetaInfo, result: Query[]) => {
+//         replaceGroupbyExpression(query, result,
+//             changeBaseBinaryExpressionOperator(meta),
+//             meta.groupby.binaryExpressionHeight);
+//     }
+// });
 
-addEdit(horizontalEdits, {
-    name: "swapGroupbyBinaryExpressionArguments",
-    description: "Swap arguments of commutative binary-expression in a group-by expression",
-    cost: 0,
-    perform: (query: Query, _schema: Schema, meta: MetaInfo, result: Query[]) => {
-        replaceGroupbyExpression(query, result, 
-            swapCommutativeArguments,
-            meta.groupby.binaryExpressionHeight);
-    }
-});
+// addEdit(horizontalEdits, {
+//     name: "swapGroupbyBinaryExpressionArguments",
+//     description: "Swap arguments of commutative binary-expression in a group-by expression",
+//     cost: 0,
+//     perform: (query: Query, _schema: Schema, meta: MetaInfo, result: Query[]) => {
+//         replaceGroupbyExpression(query, result, 
+//             swapCommutativeArguments,
+//             meta.groupby.binaryExpressionHeight);
+//     }
+// });
 
-addEdit(horizontalEdits, {
-    name: "swapGroupbyBinaryExpressionNesting",
-    description: "Swap nesting of associative binary-expression in a group-by expression",
-    cost: 0,
-    perform: (query: Query, _schema: Schema, meta: MetaInfo, result: Query[]) => {
-        replaceGroupbyExpression(query, result, 
-            swapAssociativeNesting,
-            meta.groupby.binaryExpressionHeight, 
-            meta.groupby);
-    }
-});
+// addEdit(horizontalEdits, {
+//     name: "swapGroupbyBinaryExpressionNesting",
+//     description: "Swap nesting of associative binary-expression in a group-by expression",
+//     cost: 0,
+//     perform: (query: Query, _schema: Schema, meta: MetaInfo, result: Query[]) => {
+//         replaceGroupbyExpression(query, result, 
+//             swapAssociativeNesting,
+//             meta.groupby.binaryExpressionHeight, 
+//             meta.groupby);
+//     }
+// });
 
-addEdit(horizontalEdits, {
-    name: "mirrorGroupbyBinaryExpressionInequation",
-    description: "Mirror an inequation in a group-by expression",
-    cost: 0,
-    perform: (query: Query, _schema: Schema, meta: MetaInfo, result: Query[]) => {
-        replaceGroupbyExpression(query, result, 
-            mirrorInequation,
-            meta.groupby.binaryExpressionHeight);
-    }
-});
+// addEdit(horizontalEdits, {
+//     name: "mirrorGroupbyBinaryExpressionInequation",
+//     description: "Mirror an inequation in a group-by expression",
+//     cost: 0,
+//     perform: (query: Query, _schema: Schema, meta: MetaInfo, result: Query[]) => {
+//         replaceGroupbyExpression(query, result, 
+//             mirrorInequation,
+//             meta.groupby.binaryExpressionHeight);
+//     }
+// });
 
 
 
@@ -742,7 +755,7 @@ addEdit(horizontalEdits, {
     cost: atomicEdits.get("addHavingBinaryExpression").cost,
     perform: (query: Query, _schema: Schema, meta: MetaInfo, result: Query[]) => {
         replaceHavingExpression(query, result,
-            changeBaseBinaryExpressionOperator,
+            changeBaseBinaryExpressionOperator(meta),
             meta.having.binaryExpressionHeight);
     }
 });
@@ -862,7 +875,7 @@ addEdit(horizontalEdits, {
     cost: atomicEdits.get("addOrderbyBinaryExpression").cost,
     perform: (query: Query, _schema: Schema, meta: MetaInfo, result: Query[]) => {
         replaceOrderbyExpression(query, result,
-            changeBaseBinaryExpressionOperator,
+            changeBaseBinaryExpressionOperator(meta),
             meta.orderby.binaryExpressionHeight);
     }
 });

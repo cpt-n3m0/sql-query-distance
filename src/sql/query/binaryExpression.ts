@@ -37,12 +37,21 @@ export class BinaryExpression extends Expression {
             return false;
         if (this.operator !== other.operator)
             return false;
+        if( BinaryExpression.isCommutative(this.operator)){
+            if ((this.left === other.right) && (this.right === other.left))
+                return true;
+            if (this.left && (this.left.equals(other.right, thisQuery, otherQuery)) && (this.right && this.right.equals(other.left, thisQuery, otherQuery))) 
+                return true;
+        }
+
         if (!((this.left === other.left) ||
             (this.left && this.left.equals(other.left, thisQuery, otherQuery))))
             return false;
         if (!((this.right === other.right) ||
             (this.right && this.right.equals(other.right, thisQuery, otherQuery))))
             return false;
+
+
         return true;
     }
 

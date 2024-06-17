@@ -30,5 +30,12 @@ export function createDefaultConfig(): EditSet {
     copyEntries(atomicEdits, defaultConfig);
     copyEntries(horizontalEdits, defaultConfig);
     copyEntries(shortcutEdits, defaultConfig);
+    let singleEdit: EditSet = new Map();
+    let editName: string = 'addWhereNot';
+    // let editName: string = 'removeSelectColumnReference';
+    
+    // singleEdit.set(editName, Object.assign({}, atomicEdits.get(editName))); 
+    
     return defaultConfig;
+    // return singleEdit;
 }

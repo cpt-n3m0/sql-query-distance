@@ -1,24 +1,35 @@
 const SQLQueryDistance = require('./dist/index');
+const { Parser } = require('node-sql-parser');
 
 
-const schema1 =
-`students(id, name, age, subject)
-teachers(id)`;
+// const schema1 =
+// `students(id, name, age, subject)
+// teachers(id)`;
 
-const start_query_of_shortcut_example =
-    "SELECT students.id, students.name, students.age, teachers.id FROM students, teachers";
-const destination_query_of_shortcut_example = "SELECT students.*, teachers.id FROM students, teachers";
+// const start_query_of_shortcut_example =
+//     "SELECT students.id, students.name, students.age, teachers.id FROM students, teachers";
+// const destination_query_of_shortcut_example = "SELECT students.*, teachers.id FROM students, teachers";
 
-const query_with_alias_for_the_table_students = "SELECT s.id FROM students s";
-const query_with_different_alias_for_the_table_students = "SELECT stud.id FROM students stud";
-const query_without_alias_for_the_table_students = "SELECT id FROM students";
+// const query_with_alias_for_the_table_students = "SELECT s.id FROM students s";
+// const query_with_different_alias_for_the_table_students = "SELECT stud.id FROM students stud";
+// const query_without_alias_for_the_table_students = "SELECT id FROM students";
 
+/* SELECT SUM(e.[Economics]) AS [FreeCashFlow], AVG(p.Production), a.Name  FROM Economics AS e 
+LEFT JOIN Asset AS a ON e.Name = a.Name  
+INNER JOIN Production p ON p.Year = e.Year
+WHERE e.[Asset] = 'Johan Castberg' */
 
-const schema2 =
-`students(id, name)
-teachers(tid)`;
+// SELECT e.[RevenueMMLC], npv.Cost  FROM Economics as e  
+// INNER JOIN NPV npv ON npv.Name = e.Name
+// WHERE [Asset] = 'Johan Castberg'
 
-const destination_query = "SELECT name FROM students JOIN teachers ON id = tid";
+const destination_query = `SELECT a.name, Sum(p.production) FROM Production p LEFT JOIN Asset a ON p.Name = a.Name`//AND [Company] = 'Equinor' AND [Year] = 2019`// AND [EconomicsGroup] = 'Capex'`;
+// const destination_query = `SELECT 
+// someothercols
+// FROM 
+// employe
+// `
+
 const semantically_equivalent_start_query = "SELECT name FROM students, teachers WHERE id = tid";
 const start_query_with_distance_1 = "SELECT name FROM students, teachers WHERE NOT id = tid";
 const start_query_with_distance_3 = "SELECT DISTINCT name FROM students, teachers WHERE NOT id = tid";
@@ -26,21 +37,38 @@ const complete_destination_query = "SELECT AVG( id ) FROM students";
 const incomplete_destination_query = "SELECT AVG(    ) FROM students";
 const query_with_two_columns = "SELECT id, name FROM students";
 const query_with_swapped_columns = "SELECT name, id FROM students";
+const query_with_less_conditions = `select * from Production`// AND [Year] = 2019`
+// const query_with_less_conditions = `SELECT 
+// employee_id,
+// employee_name
+// FROM 
+// employees 
+// `
 
 const complete_destination_query_ast = SQLQueryDistance.parseQuery(complete_destination_query);
 // the 3rd party SQL parser module "node-sql-parser" cannot parse incomplete queries, 
 // so we have to build this one manually
-const incomplete_destination_query_ast = complete_destination_query_ast.setSelectElement(0,
-    complete_destination_query_ast.getSelect(0).setExpression(
-        complete_destination_query_ast.getSelect(0).expression.setArgument(null)));
+// const incomplete_destination_query_ast = complete_destination_query_ast.setSelectElement(0,
+//     complete_destination_query_ast.getSelect(0).setExpression(
+//         complete_destination_query_ast.getSelect(0).expression.setArgument(null)));
 
-const modified_config = SQLQueryDistance.createDefaultConfig();
-// if we don't care about the order of SELECT-elements, 
-// we can give the respective swap-edit a cost of 0
-modified_config.get("swapSelectElements").cost = 0;
-
-
-(async () => {
+// const modified_config = SQLQueryDistance.createDefaultConfig();
+// // if we don't care about the order of SELECT-elements, 
+// // we can give the respective swap-edit a cost of 0
+// modified_config.get("swapSelectElements").cost = 0;
+const parser = new Parser();
+let ast = parser.astify(destination_query, {database: 'transactsql'});
+console.log(ast);
+( async () => {
+let distance, steps, path; 
+console.log("WARNING: this might take a bit of time!"
+    +" (for some reason, it's way faster in the browser)");
+console.time();
+[distance, steps, path] = await SQLQueryDistance.parseAndCalculateDistance(destination_query, query_with_less_conditions);
+console.timeEnd();
+console.log(SQLQueryDistance.stringifyDistance(distance, steps, path));
+})()
+/* (async () => {
     let distance, steps, path;
 
     console.log("\n\n\n\n");
@@ -151,4 +179,4 @@ modified_config.get("swapSelectElements").cost = 0;
     console.log(SQLQueryDistance.stringifyDistance(distance, steps, path));
 
     console.log("\n\n");
-})();
+})() */;
