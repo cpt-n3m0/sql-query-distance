@@ -253,7 +253,6 @@ export class Query extends Hashable {
         recursionDepth: number,
         maxHeight: HeightInfo = null
     ): Expression[] {
-        console.log(multimap)
         if(recursionDepth < 0) return [];
 
         const context = new ExpressionContext([], this, maxHeight);
