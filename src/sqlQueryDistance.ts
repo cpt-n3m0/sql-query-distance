@@ -171,7 +171,7 @@ export async function calculateDistance(
 
     if(!schema) schema = Schema.deduceSchema(destination);
 
-    destination.validateSemantics(schema);
+    // destination.validateSemantics(schema);
 
     const metaInfo = new MetaInfo(destination, schema);
 
