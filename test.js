@@ -4,9 +4,9 @@ const { Parser } = require('node-sql-parser');
 
 
 
-const destination_query = `SELECT "Country", SUM("Production") AS SUMProduction FROM LLM.dbo.Production WHERE "Year" > 2010 GROUP BY "Country" ORDER BY SUMProduction DESC`
+const destination_query = `SELECT "Country",  SUM("Production") AS "SUMProduction" from LLM.dbo.Production GROUP BY "Country" ORDER BY "SUMProduction"`
 console.log(destination_query);
-const query_with_less_conditions = `SELECT "Country", SUM("Production") AS "SUMProduction" FROM LLM.dbo.Production WHERE "Year" > 2010 GROUP BY "Country" ORDER BY "SUMProduction" DESC`
+const query_with_less_conditions = undefined
 // const complete_destination_query_ast = SQLQueryDistance.parseQuery(complete_destination_query);
 
 const parser = new Parser();
