@@ -197,7 +197,12 @@ export function replaceSelectExpression(
         const expressions = select.recursivelyReplaceExpression(
             multimap, recursionDepth, query, maxHeight);
         for(let e=0, n=expressions.length; e<n; ++e) {
-            result.push(query.setSelectElement(s, select.setExpression(expressions[e])));
+            let exists = query.copySelect().map(x => ColumnReference.isColumnReference(x.expression) && ColumnReference.isColumnReference(expressions[e]) && x.expression.column == (expressions[e] as ColumnReference).column).includes(true);
+            if(exists) continue;
+            let new_query = query.setSelectElement(s, select.setExpression(expressions[e]));
+            let added = result.map(x => x.equalSelect(new_query)).includes(true);
+            if (added) continue;
+            result.push(new_query);
         }
     }
 }
@@ -210,9 +215,14 @@ addEdit(atomicEdits, {
         if((new SelectMetaInfo(query, schema).length >= Math.max(meta.select.length, 1)) 
             || (query.fromLength <= 0)) return;
 
-        for(let s=0; s<=query.selectLength; ++s) {
-            result.push(query.setSelectElement(s, new SelectElement(), false));
-        }
+        let diff = meta.select.length - new SelectMetaInfo(query, schema).length
+        let q = query;
+        for (let i = 0; i < diff; i++)
+            q = q.setSelectElement(0, new SelectElement(), false)
+        // for(let s=0; s<=query.selectLength; ++s) {
+        result.push(q);
+        return diff;
+        // }
     }
 });
 
@@ -221,6 +231,8 @@ addEdit(atomicEdits, {
     description: "Remove (excess) element in select-clause",
     cost: 1,
     perform: (query: Query, _schema: Schema, _meta: MetaInfo, result: Query[]) => {
+        if (query.selectLength <= _meta.select.length) return;
+        
         for(let s=0; s<query.selectLength; ++s) {
             result.push(query.setSelectElement(s, undefined));
         }

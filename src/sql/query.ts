@@ -10,6 +10,7 @@ import { FromElement } from "./query/fromElement";
 import { OrderBy } from "./query/orderBy";
 import { append } from "../util";
 import { HeightInfo } from "./heightInfo";
+import { stringifyQuery } from "../parser";
 
 export * from "./query/hashable";
 export * from "./query/expression";
@@ -99,8 +100,13 @@ export class Query extends Hashable {
 
     public equalSelect(other: Query): boolean {
         if(this.selectLength !== other.selectLength) return false;
+        //match selects regardless of order
         for(let i=0, l=this.selectLength; i<l; ++i) {
-            if(!this.select[i].equals(other.select[i], this, other)) return false;
+            let match = this.select.map(x => (other.getSelect(i).equals(x, other, this))).includes(true);
+            if (!match) return false 
+            match = other.copySelect().map(x => (this.getSelect(i).equals(this.select[i], this , other))).includes(true);
+            if (!match) return false 
+                
         }
         return true;
     }
@@ -128,34 +134,15 @@ export class Query extends Hashable {
          return false;
         return true;
     }
-    public equals(other: Query): boolean {
-        if((other === null) || (this.hash !== other.hash)) return false;
-        if(this.distinct !== other.distinct) return false;
-        if(this.selectLength !== other.selectLength) return false;
-        if(this.fromLength !== other.fromLength) return false;
-        if(this.groupbyLength !== other.groupbyLength) return false;
-        if(this.orderbyLength !== other.orderbyLength) return false;
-        for(let i=0, l=this.selectLength; i<l; ++i) {
-            if(!this.select[i].equals(other.select[i], this, other)) return false;
-        }
-        for(let i=0, l=this.fromLength; i<l; ++i) {
-            if(!this.from[i].equals(other.from[i], this, other)) return false;
-        }
-        if(!((this.where == other.where) ||
-             (this.where !== null && this.where.equals(other.where, this, other))))
-             return false;
-        for(let i=0, l=this.groupbyLength; i<l; ++i) {
-            if(!(this.groupby[i] === other.groupby[i] ||
-                (this.groupby[i] && this.groupby[i].equals(other.groupby[i], this, other))))
-                return false;
-        }
-        if(!((this.having == other.having) ||
-             (this.having !== null && this.having.equals(other.having, this, other))))
-             return false;
-        for(let i=0, l=this.orderbyLength; i<l; ++i) {
-            if(!this.orderby[i].equals(other.orderby[i], this, other)) return false;
-        }
+    public equalHaving(other: Query): boolean {
+       if(!((this.having == other.having) ||
+         (this.having !== null && this.having.equals(other.having, this, other))))
+         return false;
+ 
         return true;
+    }
+    public equals(other: Query): boolean {
+        return this.equalFrom(other) && this.equalSelect(other)&& this.equalHaving(other)&& this.equalGroupby(other)&& this.equalWhere(other)&& this.equalOrderby(other)
     }
 
 

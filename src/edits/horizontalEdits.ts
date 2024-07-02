@@ -168,7 +168,7 @@ function mirrorInequation(x: Expression, context: ExpressionContext) {
 
 // === SELECT ===
 
-addEdit(horizontalEdits, {
+/* addEdit(horizontalEdits, {
     name: "swapSelectElements",
     description: "Swap elements in the select-clause",
     cost: 1,
@@ -201,7 +201,7 @@ addEdit(horizontalEdits, {
         // })(select.length);
         // result.shift();
     }
-});
+}) */;
 
 addEdit(horizontalEdits, {
     name: "changeSelectAsteriskTable",

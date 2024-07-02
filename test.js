@@ -4,7 +4,7 @@ const { Parser } = require('node-sql-parser');
 
 
 
-const destination_query = `SELECT "Country",  SUM("Production") AS "SUMProduction" from LLM.dbo.Production GROUP BY "Country" ORDER BY "SUMProduction"`
+const destination_query = `SELECT [Asset], [Asset Type], [Operator],  [Field Size Category], [Field Type Category], [On-Offshore], [ReservoirDepthCategory], [Unconventional Category] FROM LLM.dbo.AssetCompany`
 console.log(destination_query);
 const query_with_less_conditions = undefined
 // const complete_destination_query_ast = SQLQueryDistance.parseQuery(complete_destination_query);

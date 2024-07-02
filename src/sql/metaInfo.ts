@@ -324,7 +324,7 @@ function collect(
             const cleanX = new Literal(x.value);
             if(!containsExpression(literals, cleanX, query)) literals.push(cleanX);
         } else if (AggregationFunction.isAggregationFunction(x)) {
-            const cleanX = new AggregationFunction(x.aggregation);
+            const cleanX = new AggregationFunction(x.aggregation, x.distinct, x.argument);
             if(!containsExpression(aggregations, cleanX, query)) aggregations.push(cleanX);
         } else if (BinaryExpression.isBinaryExpression(x)) {
             const cleanX = new BinaryExpression(x.operator, x.left, x.right);
